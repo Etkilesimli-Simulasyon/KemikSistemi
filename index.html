@@ -1,0 +1,164 @@
+<!--
+  Unity WebGL Template
+  (Assets/WebGLTemplates/MebResponsive/index.html)
+-->
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <title>EBA | SkeletonSystem</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="shortcut icon" href="TemplateData/favicon.ico" />
+  <link rel="stylesheet" href="TemplateData/style.css" />
+
+  <style>
+    /* 9:16 — Tam ekran merkezleme ve siyah arkaplan */
+    html, body { margin:0; height:100%; background:#000; }
+    #unity-container{
+      position:fixed; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      background:#000;
+    }
+    #unity-canvas{ display:block; /* width/height JS ile ayarlanır */ }
+
+    /* Tam ekran düğmesi (yük tamamlanınca görünür) */
+    #unity-fullscreen-button{
+      position:fixed;bottom:0px;right:0px;
+      width:0px;height:0px;border:none;
+      background:url('TemplateData/fullscreen-button.png') center/contain no-repeat;
+      background-color:transparent;cursor:pointer;
+      z-index:10;display:none
+    }
+    /* Yükleme overlay’i fade-out olduğunda */
+    #meb-loading-overlay.loaded{
+      opacity:0;pointer-events:none;transition:opacity .3s ease
+    }
+
+    /* 9:16 — Landscape uyarı overlay’i */
+    #rotate-overlay{
+      position:fixed; inset:0; display:none;
+      align-items:center; justify-content:center;
+      background:#000; color:#fff; z-index:11;
+      text-align:center; padding:24px; font:500 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    #rotate-overlay .box{
+      max-width:520px; opacity:.9;
+    }
+  </style>
+</head>
+<body>
+  <!-- ███ YÜKLEME OVERLAY ███ -->
+  <div id="meb-loading-overlay" role="alert" aria-live="polite">
+    <img id="meb-logo" src="TemplateData/meb-logo.png" alt="MEB Logo">
+    <div id="meb-spinner-container" aria-hidden="true">
+      <div class="spinner"></div>
+      <div class="percentage-text" id="meb-percentage">0%</div>
+    </div>
+    <p id="meb-loading-text">Yükleniyor…</p>
+    <div id="meb-footer">
+      <img src="TemplateData/eba-logo.png" alt="EBA Logo">
+    </div>
+  </div>
+
+  <!-- 9:16 — Landscape uyarısı -->
+  <div id="rotate-overlay">
+    <div class="box">
+      <p>Cihazı dikey (portrait) konuma getiriniz.</p>
+    </div>
+  </div>
+
+  <!-- ███ UNITY CANVAS ███ -->
+  <div id="unity-container">
+    <canvas id="unity-canvas" tabindex="-1" data-build="Build"></canvas>
+    <div id="unity-warning" style="display:none"></div>
+  </div>
+
+  <!-- Tam ekran -->
+  <button id="unity-fullscreen-button" aria-label="Tam Ekran"></button>
+
+  <script>
+  (function () {
+    /* === Elemanlar === */
+    const canvas   = document.getElementById('unity-canvas');
+    const overlay  = document.getElementById('meb-loading-overlay');
+    const percent  = document.getElementById('meb-percentage');
+    const fsButton = document.getElementById('unity-fullscreen-button');
+    const rotateOverlay = document.getElementById('rotate-overlay');
+
+    /* === Build klasörü (canvas[data-build] varsa onu kullan) === */
+    const buildUrl = canvas.dataset.build || 'Build';
+
+    /* === Loader script yolu === */
+    const loaderUrl = buildUrl + '/SinirBuild10.loader.js';
+
+    /* === 9:16 — Canvas’ı pencereye sığdır (letterbox/pillarbox) === */
+    function fit9x16() {
+      const W = window.innerWidth, H = window.innerHeight;
+      const targetW = 9, targetH = 16;
+      const s = Math.min(W / targetW, H / targetH);
+      const w = Math.floor(targetW * s);
+      const h = Math.floor(targetH * s);
+
+      // CSS boyutları: Unity, matchWebGLToCanvasSize=true ise render tamponunu buna uyarlar
+      canvas.style.width  = w + 'px';
+      canvas.style.height = h + 'px';
+
+      // Landscape uyarısı
+      const isLandscape = W > H;
+      rotateOverlay.style.display = isLandscape ? 'flex' : 'none';
+    }
+
+    // İlk boyutlandırma (loader’dan önce yapılır)
+    fit9x16();
+
+    // Boyut/oryantasyon değişince yeniden uygula
+    window.addEventListener('resize', fit9x16);
+    window.addEventListener('orientationchange', fit9x16);
+    document.addEventListener('visibilitychange', fit9x16);
+
+    /* === Unity config === */
+    const config = {
+      dataUrl:      buildUrl + '/SinirBuild10.data.unityweb',
+      frameworkUrl: buildUrl + '/SinirBuild10.framework.js.unityweb',
+      codeUrl:      buildUrl + '/SinirBuild10.wasm.unityweb',
+      decompressionFallback: true,
+      companyName:  'DefaultCompany',
+      productName:  'EBA',
+      productVersion:'0.1.0',
+      devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+
+      /* 9:16 — WebGL tamponu CSS canvas boyutuna eşitlensin */
+      matchWebGLToCanvasSize: true
+    };
+
+    /* === Unity loader’ı ekle === */
+    const script = document.createElement('script');
+    script.src = loaderUrl;
+    script.onload = () => {
+      // Yükleme yüzdesi güncellenirken de 9:16 korunsun
+      createUnityInstance(canvas, config, (p) => {
+        percent.textContent = (p * 100 | 0) + '%';
+        // Safari mobilde address bar hareketleri: ara sıra tekrar uygula
+        // (hafif ve güvenli)
+        fit9x16();
+      }).then((unity) => {
+        overlay.classList.add('loaded');
+        overlay.addEventListener('transitionend', () => overlay.remove(), { once:true });
+
+        fsButton.style.display = 'block';
+        fsButton.onclick = () => {
+          // Fullscreen açıkken de 9:16 merkezde kalsın
+          unity.SetFullscreen(1);
+          // Kısa gecikmeyle yeniden yerleştir
+          setTimeout(fit9x16, 100);
+        };
+
+        // Başlangıçta bir kez daha
+        fit9x16();
+      }).catch(alert);
+    };
+    document.body.appendChild(script);
+  })();
+  </script>
+</body>
+</html>
